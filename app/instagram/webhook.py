@@ -52,18 +52,22 @@ async def receive_webhook(request: Request):
     print(payload)
 
     for entry in payload.get("entry", []):
+
+        # DM events (Instagram Messaging) arrive in a 'messaging'
+        # array on the entry, Messenger-platform style - NOT inside
+        # 'changes'. Each item already has 'sender' and 'message'
+        # keys, same shape handle_message_change() expects.
+        for messaging_event in entry.get("messaging", []):
+            handle_message_change(messaging_event)
+
+        # Comments / live_comments / mentions etc. arrive in the
+        # 'changes' array instead, each with a 'field' + 'value'.
         for change in entry.get("changes", []):
 
             field = change.get("field")
 
-            if field == "messages":
-                handle_message_change(change.get("value", {}))
-
-            elif field in ("comments", "live_comments"):
+            if field in ("comments", "live_comments"):
                 handle_comment_change(change.get("value", {}))
-
-            else:
-                continue
 
     return {
         "status": "ok"
@@ -72,8 +76,8 @@ async def receive_webhook(request: Request):
 
 def handle_message_change(value: dict):
     """
-    Handle an incoming Instagram DM ('messages' webhook field)
-    and reply automatically using the RAG pipeline.
+    Handle an incoming Instagram DM and reply automatically using
+    the RAG pipeline.
     """
 
     sender = value.get("sender", {})
@@ -86,7 +90,7 @@ def handle_message_change(value: dict):
         return
 
     # Instagram bundles "echoes" of our own sent messages into the
-    # same 'messages' field. Ignore anything we sent ourselves.
+    # same 'messaging' array. Ignore anything we sent ourselves.
     if message.get("is_echo") or sender_id == META_INSTAGRAM_ACCOUNT_ID:
         return
 
